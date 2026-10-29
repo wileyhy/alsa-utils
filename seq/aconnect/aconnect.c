@@ -3,11 +3,11 @@
  *   ver.0.1.3
  *
  * Copyright (C) 1999 Takashi Iwai
- * 
+ *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
  *  published by the Free Software Foundation.
- * 
+ *
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -31,20 +31,32 @@
 
 static int show_all;
 
-static void error_handler(const char *file, int line, const char *function, int err, const char *fmt, ...)
+
+#if SND_LIB_VER(1, 2, 15) < SND_LIB_VERSION
+static void error_handler(const char *file, int line, const char *function, int errcode, const char *fmt, ...)
 {
 	va_list arg;
 
-	if (err == ENOENT)	/* Ignore those misleading "warnings" */
+	if (errcode == ENOENT)	/* Ignore those misleading "warnings" */
 		return;
 	va_start(arg, fmt);
 	fprintf(stderr, "ALSA lib %s:%i:(%s) ", file, line, function);
 	vfprintf(stderr, fmt, arg);
-	if (err)
-		fprintf(stderr, ": %s", snd_strerror(err));
+	if (errcode)
+		fprintf(stderr, ": %s", snd_strerror(errcode));
 	putc('\n', stderr);
 	va_end(arg);
 }
+#else
+static snd_lib_log_handler_t original_log_handler;
+static void log_handler(int prio, int interface, const char *file, int line, const char *function, int errcode, const char *fmt, va_list arg)
+{
+	if (prio == SND_LOG_ERROR && errcode == ENOENT)	/* Ignore those misleading "warnings" */
+		return;
+	if (original_log_handler)
+		original_log_handler(prio, interface, file, line, function, errcode, fmt, arg);
+}
+#endif
 
 static void usage(void)
 {
@@ -355,8 +367,12 @@ int main(int argc, char **argv)
 		fprintf(stderr, _("can't open sequencer\n"));
 		return 1;
 	}
-	
+
+#if SND_LIB_VER(1, 2, 15) < SND_LIB_VERSION
 	snd_lib_error_set_handler(error_handler);
+#else
+	original_log_handler = snd_lib_log_set_handler(log_handler);
+#endif
 
 	switch (command) {
 	case LIST:
